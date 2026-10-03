@@ -62,13 +62,16 @@ def run_scale_benchmark(base_url: str, num_adds: int = 1000, num_searches: int =
             "session_id": f"sess_scale_{i // 50}"
         })
 
+    limits = httpx.Limits(max_keepalive_connections=concurrency * 2, max_connections=concurrency * 4)
+    timeout = httpx.Timeout(45.0, connect=20.0)
+    pool_client = httpx.Client(base_url=base_url, limits=limits, timeout=timeout)
+
     add_latencies = []
     t_add_start = time.time()
 
     def do_add(payload):
-        c = httpx.Client(base_url=base_url, timeout=30.0)
         t0 = time.time()
-        r = c.post("/add", json=payload)
+        r = pool_client.post("/add", json=payload)
         lat = (time.time() - t0) * 1000.0
         assert r.status_code == 200, f"Add failed: {r.text}"
         return lat
@@ -105,9 +108,8 @@ def run_scale_benchmark(base_url: str, num_adds: int = 1000, num_searches: int =
 
     def do_search(q_idx):
         query_text = search_queries[q_idx % len(search_queries)]
-        c = httpx.Client(base_url=base_url, timeout=30.0)
         t0 = time.time()
-        r = c.post("/search", json={"query": query_text, "user_id": user_id, "top_k": 100})
+        r = pool_client.post("/search", json={"query": query_text, "user_id": user_id, "top_k": 100})
         lat = (time.time() - t0) * 1000.0
         assert r.status_code == 200, f"Search failed: {r.text}"
         data = r.json().get("data", [])

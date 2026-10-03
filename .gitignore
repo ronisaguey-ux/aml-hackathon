@@ -51,3 +51,7 @@ htmlcov/
 # Environment variables
 .env
 .env.local
+
+# Internal working briefs
+*PROMPT.md
+aml-findings-summary.json

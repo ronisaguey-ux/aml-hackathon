@@ -1,6 +1,6 @@
-# Reproducibility & Empirical Validation (v0.3.0)
+# Reproducibility & Empirical Validation (v0.3.1)
 
-This document provides exact reproduction instructions, empirical benchmark results, and verification commands for **AxiomMem v0.3.0** on the Agent Memory Leaderboard (AML) Challenge 2026 (Cycle 2).
+This document provides exact reproduction instructions, empirical benchmark results, and verification commands for **AxiomMem v0.3.1** on the Agent Memory Leaderboard (AML) Challenge 2026 (Cycle 2).
 
 ---
 
@@ -35,66 +35,64 @@ The evaluation harness (`scripts/eval_harness.py`) evaluates 66 diverse scenario
 python scripts/eval_harness.py --base-url http://localhost:8000
 ```
 
-### 2.2 Official Empirical Results (v0.3.0)
+### 2.2 Official Empirical Results (v0.3.1)
 
 | Metric | Score | Notes |
 |:---|:---:|:---|
-| **Overall MRR (Mean Reciprocal Rank)** | **0.5974** | Honest, un-saturated baseline across 66 hard cases |
-| **Overall Mean Gold Rank** | **9.08** | Evaluated against 50+ distractors per scenario |
-| **Recall@1** | **45.5%** | Gold fact retrieved at Rank 1 |
-| **Recall@5** | **77.3%** | Gold fact retrieved within top 5 |
-| **Recall@10** | **90.9%** | Gold fact retrieved within top 10 |
-| **Evaluation Runtime** | **91.04s** | 0.7 scenarios/s throughput |
+| **Overall MRR (Mean Reciprocal Rank)** | **0.6281** | Honest, un-saturated baseline across 66 hard cases |
+| **Overall Mean Gold Rank** | **6.03** | Evaluated against 50+ distractors per scenario |
+| **Recall@1** | **48.5%** | Gold fact retrieved at Rank 1 |
+| **Recall@5** | **80.3%** | Gold fact retrieved within top 5 |
+| **Recall@10** | **93.9%** | Gold fact retrieved within top 10 |
+| **Evaluation Runtime** | **100.15s** | 0.7 scenarios/s throughput |
 
 ### 2.3 Capability Breakdown Table
 
 | Column | Capability Description | MRR | Mean Gold Rank | Success Metric |
 |:---|:---|:---:|:---:|:---|
-| **Column C** | **Temporal State Updates** | **0.4794** | 5.13 | **26.7%** Rank-1 Valid State |
-| **Column G** | **Procedural Execution** | **0.7242** | 3.07 | **60.0%** Monotonic Ordered Sequence |
-| **Column B** | **Multi-Hop Relational** | **0.5355** | 2.67 | **91.7%** Dual-Hop Retained in Top-5 |
+| **Column C** | **Temporal State Updates** | **0.4794** | 5.07 | **26.7%** Rank-1 Valid State |
+| **Column G** | **Procedural Execution** | **0.7186** | 3.13 | **60.0%** Monotonic Ordered Sequence |
+| **Column B** | **Multi-Hop Relational** | **0.5375** | 2.58 | **91.7%** Retained (**41.7%** Ordered Top-3) |
 | **Column D** | **Rules & Constraints** | **1.0000** | 1.00 | **100.0%** Rank-1 Strict Rule |
-| **Column E** | **Streaming Interleaved** | **0.3687** | 1.00 | **12.5%** Rank-1 Latest Event Tick |
-| **Column F** | **Governance & Negatives** | **1.0000** | 1.00 | **50.0%** Clean Negative Rejection |
+| **Column E** | **Streaming Interleaved** | **0.3792** | 1.00 | **12.5%** Rank-1 Latest Event Tick |
+| **Column F** | **Governance & Negatives** | **1.0000** | 1.00 | **75.0%** Clean Negative Rejection |
 
 ---
 
 ## 3. Non-Vacuity Verification (`--test-broken`)
 
-To prove that the evaluation metrics are strictly dependent on ranking order and cannot be trivially passed by unordered sets, the harness includes a non-vacuity mode that applies **intra-sequence shuffling** to the retrieved results.
+To verify that the evaluation metrics are discriminating and not inflated by order-insensitive matching, the harness includes `--test-broken`, which simulates intra-sequence shuffling and list corruption:
 
-### 3.1 Verification Command
 ```bash
-python scripts/eval_harness.py --test-broken
+python scripts/eval_harness.py --base-url http://localhost:8000 --test-broken
 ```
 
-### 3.2 Non-Vacuity Contrast
+### 3.1 Comparative Non-Vacuity Contrast
 
-| Capability Column | Normal Evaluated Mode | Broken Ranking Mode (`--test-broken`) | Non-Vacuity Verdict |
+| Column / Metric | Healthy Baseline | Corrupted Ranking (`--test-broken`) | Contrast Status |
 |:---|:---:|:---:|:---|
-| **Overall MRR** | **0.6494** | **0.2375** | Decisive drop (-63.4%) |
-| **Column G (Procedural Order)** | **66.7%** | **0.0%** | **Complete failure under shuffling** |
-| **Column B (Multi-Hop Linking)** | **91.7%** | **25.0%** | **Decisive drop (-72.7%)** |
-| **Column C (Temporal Rank-1)** | **46.7%** | **6.7%** | **Decisive drop (-85.7%)** |
-| **Column D (Strict Rules)** | **100.0%** | **0.0%** | **Complete failure under shuffling** |
+| **Overall MRR** | **0.6281** | **0.2917** | **-53.6% drop** |
+| **Mean Gold Rank** | **6.03** | **25.97** | Severe degradation |
+| **Recall@1** | **48.5%** | **21.2%** | Precision collapses |
+| **Column G (Ordered Sequences)** | **60.0%** | **0.0%** | Complete failure under shuffling |
+| **Column B (Ordered Top-3 Pairs)** | **41.7%** | **0.0%** | Multi-hop relational order destroyed |
+| **Column D (Rule Rank-1)** | **100.0%** | **0.0%** | Strict rule pinning collapses |
+| **Column F (Governance Positive Control)** | **N/A** | **100.0% (8/8) Acceptance** | Confirmed true discrimination |
 
 ---
 
 ## 4. Scale, Concurrency & Durability Verification
 
-Tested under realistic high-volume concurrency using `scripts/benchmark_scale.py`:
+Evaluated directly through the permanent public HTTPS tunnel `https://axiom.helpotron.dpdns.org`:
 
 ```bash
-python scripts/benchmark_scale.py --adds 1000 --searches 200 --concurrency 8
+python scripts/benchmark_scale.py --base-url https://axiom.helpotron.dpdns.org --adds 300 --searches 100 --concurrency 4
 ```
 
-### 4.1 Scale Benchmark Results
-- **Corpus Volume Tested**: **4,463 stored memories** on disk.
-- **Add Ingestion Throughput**: **19.6 memories/second** (p50: 249.1ms, p95: 506.0ms, p99: 748.6ms).
-- **Search Throughput**: **18.4 QPS** at `top_k=100` (p50: 363.5ms, p95: 572.3ms, p99: 690.2ms).
-- **Deterministic Repeatability**: **100.0%** byte-for-byte identical ID and score rankings across repeated queries.
-- **Persistence Across Restart**: Verified SQLite WAL recovery with zero record loss on process termination.
-- **Idempotency**: Strict deduplication verified on repeated `request_id` submissions.
+- **Ingest Throughput**: **87.5 mems/sec** (p50: 42.3 ms, p95: 61.1 ms, p99: 133.4 ms)
+- **Search QPS (`top_k=100`)**: **49.0 QPS** (p50: 78.3 ms, p95: 111.7 ms, p99: 122.8 ms)
+- **Ranking Determinism**: **100.0%** repeatable ranking across runs via stable tie-breaking
+- **Persistence Integrity**: 100% persisted across server and tunnel restart without loss
 
 ---
 
@@ -105,8 +103,8 @@ python scripts/benchmark_scale.py --adds 1000 --searches 200 --concurrency 8
 pytest tests/ -v
 
 # Run live smoke test
-python scripts/smoke_test.py --base-url http://localhost:8000
+python scripts/smoke_test.py --base-url https://axiom.helpotron.dpdns.org
 
 # Run capability probes
-python scripts/probe_suite.py --base-url http://localhost:8000
+python scripts/probe_suite.py --base-url https://axiom.helpotron.dpdns.org
 ```

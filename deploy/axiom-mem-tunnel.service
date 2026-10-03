@@ -1,16 +1,12 @@
 [Unit]
-Description=AxiomMem Cloudflare Quick Tunnel
-After=axiom-mem.service network-online.target
-Wants=axiom-mem.service network-online.target
+Description=AxiomMem Tunnel Controller (Named Tunnel Ingress on axiom.helpotron.dpdns.org)
+After=helpotron-tunnel.service
+Wants=helpotron-tunnel.service
 
 [Service]
-Type=simple
-WorkingDirectory=/home/roni/Roni_workspace/aml-challenge
-ExecStart=/home/roni/Roni_workspace/aml-challenge/deploy/start_tunnel.sh
-Restart=always
-RestartSec=5
-StandardOutput=journal
-StandardError=journal
+Type=oneshot
+ExecStart=/usr/bin/systemctl --user restart helpotron-tunnel.service
+RemainAfterExit=yes
 
 [Install]
 WantedBy=default.target

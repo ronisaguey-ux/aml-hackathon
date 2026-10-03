@@ -191,8 +191,9 @@ python scripts/benchmark_scale.py --adds 1000 --searches 200 --concurrency 8
 
 ## 5. Production Deployment & Live Endpoints
 
-### 5.1 Active Public Deployment
-- **Public URL**: `https://acid-reproductive-calculations-downloads.trycloudflare.com`
+### 5.1 Active Permanent Public Deployment
+- **Permanent Public URL**: `https://axiom.helpotron.dpdns.org`
+- **Hostname Alias**: `https://axiom-mem.helpotron.dpdns.org`
 - **Supported Endpoints**:
   - `GET /health` — Service health & uptime probe
   - `POST /add` & `POST /v1/memories/add` — Ingest messages with immediate visibility

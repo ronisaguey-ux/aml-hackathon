@@ -6,7 +6,7 @@ Wants=axiom-mem-tunnel.service
 [Service]
 Type=simple
 WorkingDirectory=/home/roni/Roni_workspace/aml-challenge
-ExecStart=/home/roni/Roni_workspace/aml-challenge/.venv/bin/python deploy/keepalive_monitor.py --base-url https://acid-reproductive-calculations-downloads.trycloudflare.com --interval 60 --log-file data/keepalive.log
+ExecStart=/home/roni/Roni_workspace/aml-challenge/.venv/bin/python deploy/keepalive_monitor.py --base-url https://axiom.helpotron.dpdns.org --interval 60 --log-file data/keepalive.log
 Restart=always
 RestartSec=10
 StandardOutput=journal

@@ -13,7 +13,7 @@ STATE_CHANGE_PATTERNS = [
 ]
 
 PAST_TENSE_QUERY_PATTERN = re.compile(
-    r'\b(originally|before|previously|initially|used to|former|formerly|prior|earlier|first lived|started as|old database|what was|where was)\b',
+    r'\b(originally|before|previously|initially|used to|former|formerly|prior|earlier|first lived|started as|old database|what was (the |my )?(original|old|previous|initial|former|earlier)|where was (the |my )?(original|old|previous|initial|former|earlier))\b',
     re.IGNORECASE
 )
 
