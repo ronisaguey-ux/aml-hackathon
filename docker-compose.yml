@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  axiom-mem:
+    build: .
+    container_name: axiom-mem
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - AXIOM_HOST=0.0.0.0
+      - AXIOM_PORT=8000
+      - AXIOM_DB_PATH=/app/data/axiom_mem.db
+      - AXIOM_EMBEDDING_PROVIDER=fastembed
+      - AXIOM_DATA_RETENTION_DAYS=30
+      # Optional: set OPENAI_API_KEY and AXIOM_EMBEDDING_PROVIDER=openai for academic leaderboard text-embedding-v4
+      # - OPENAI_API_KEY=your_key_here
+      # - TEXT_EMBEDDING_MODEL=text-embedding-v4
+    volumes:
+      - axiom_data:/app/data
+
+volumes:
+  axiom_data:
+    driver: local

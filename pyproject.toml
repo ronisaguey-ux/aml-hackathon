@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "axiom-mem"
+version = "0.1.0"
+description = "AxiomMem: High-performance memory system engineered for execution continuity, temporal resolution, and zero-loss retrieval (AML Challenge Cycle 2)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "Axiom Team", email = "research@axiom-mem.org" }
+]
+keywords = [
+    "memory",
+    "agent-memory",
+    "retrieval",
+    "llm",
+    "bm25",
+    "vector-search",
+    "temporal-reasoning",
+    "execution-continuity"
+]
+dependencies = [
+    "fastapi>=0.110.0",
+    "uvicorn>=0.28.0",
+    "pydantic>=2.6.0",
+    "numpy>=1.24.0",
+    "httpx>=0.27.0",
+    "fastembed>=0.2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+]
+openai = [
+    "openai>=1.14.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
