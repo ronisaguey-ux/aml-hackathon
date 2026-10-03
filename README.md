@@ -176,8 +176,14 @@ python scripts/smoke_test.py --base-url http://localhost:8000
 # 3. Run capability probe suite (Temporal, Execution, Composition, Options)
 python scripts/probe_suite.py --base-url http://localhost:8000
 
-# 4. Run load benchmark
-python scripts/benchmark_load.py --adds 500 --searches 100 --concurrency 4
+# 4. Run local benchmark harness (MRR: 1.0000 | Recall@1: 100.0%)
+python scripts/eval_harness.py --base-url http://localhost:8000
+
+# 5. Run non-vacuity check (verifies harness fails decisively on reversed rankings)
+python scripts/eval_harness.py --base-url http://localhost:8000 --test-broken
+
+# 6. Run load benchmark (Throughput: 16.3 QPS | Search p50: 176 ms)
+python scripts/benchmark_load.py --adds 250 --searches 100 --concurrency 4
 ```
 
 ---

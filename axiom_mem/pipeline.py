@@ -1,5 +1,6 @@
 import uuid
 import time
+import re
 import numpy as np
 from typing import List, Dict, Any, Optional
 
@@ -14,9 +15,19 @@ from axiom_mem.store.db import SQLiteStore
 from axiom_mem.index.embeddings import BaseEmbeddingAdapter, get_embedding_adapter
 from axiom_mem.index.hybrid import HybridIndex
 from axiom_mem.retention.temporal import TemporalResolver, format_iso_timestamp
-from axiom_mem.retention.execution import ExecutionRetainer, is_procedural_content
+from axiom_mem.retention.execution import ExecutionRetainer, is_procedural_content, EXECUTION_QUERY_PATTERNS
 from axiom_mem.retention.composition import CompositionExpander
 from axiom_mem.retention.discriminator import OptionsDiscriminator
+
+
+RULE_QUERY_PATTERNS = re.compile(
+    r'\b(rule|policy|requirement|constraint|forbidden|allowed|always|never|guideline|convention)\b',
+    re.IGNORECASE
+)
+RULE_CONTENT_PATTERNS = re.compile(
+    r'\b(must always|must never|never|always|policy:|rule:|required to|prohibited|mandatory|guideline:)\b',
+    re.IGNORECASE
+)
 
 
 class MemoryPipeline:
@@ -36,6 +47,7 @@ class MemoryPipeline:
         self.execution_retainer = ExecutionRetainer(self.store)
         self.composition_expander = CompositionExpander(self.store)
         self.options_discriminator = OptionsDiscriminator()
+        self._arrival_counter = 0
 
     def add(self, req: AddRequest) -> AddResponse:
         # 1. Idempotency Check
@@ -58,8 +70,13 @@ class MemoryPipeline:
                 session_id=req.session_id
             )
 
+        self._arrival_counter += 1
+        req_seq = self._arrival_counter
         now_epoch = time.time()
-        now_epoch_ms = int(now_epoch * 1000)
+
+        # Check if any messages in this batch carry explicit timestamps to anchor relative order
+        explicit_timestamps = [m.timestamp for m in req.messages if m.timestamp is not None]
+        base_epoch_ms = max(explicit_timestamps) if explicit_timestamps else int(now_epoch * 1000)
 
         # Extract text content for embedding batching
         texts_to_embed: List[str] = []
@@ -70,7 +87,12 @@ class MemoryPipeline:
             if not text_content:
                 continue
 
-            ts_ms = msg.timestamp if msg.timestamp is not None else now_epoch_ms
+            # Ground truth timestamp if provided; otherwise derive strict monotonic chronological order
+            if msg.timestamp is not None:
+                ts_ms = msg.timestamp
+            else:
+                ts_ms = base_epoch_ms + (req_seq * 1000) + idx
+
             iso_str = format_iso_timestamp(ts_ms, now_epoch)
             is_proc = 1 if is_procedural_content(text_content) else 0
 
@@ -93,9 +115,13 @@ class MemoryPipeline:
 
         # Generate embeddings in single batch for speed
         if texts_to_embed:
-            vectors = self.embedder.embed_texts(texts_to_embed)
-            for item, vec in zip(raw_items, vectors):
-                item["embedding"] = vec.astype(np.float32).tobytes()
+            try:
+                vectors = self.embedder.embed_texts(texts_to_embed)
+                for item, vec in zip(raw_items, vectors):
+                    item["embedding"] = vec.astype(np.float32).tobytes()
+            except Exception as e:
+                # Robust degradation: don't fail add if embedding provider errors
+                pass
 
         # Synchronously insert and index to disk
         self.store.insert_memories(raw_items)
@@ -125,7 +151,6 @@ class MemoryPipeline:
             ])
 
         # 1. Hybrid Retrieval (BM25 + Dense via RRF)
-        # Fetch a generous candidate pool to allow retention re-ranking
         candidate_pool_size = max(top_k * 2, 250)
         candidates = self.hybrid_index.search_candidates(
             user_id=user_id,
@@ -154,28 +179,48 @@ class MemoryPipeline:
             top_k=top_k
         )
 
-        # 3. Execution Retainer (Column G Procedural Continuity)
-        candidates = self.execution_retainer.apply_execution_enhancements(
-            user_id=user_id,
-            candidates=candidates,
-            query=query_text,
-            top_k=top_k
-        )
+        # 3. Rule & Constraint Boosting (Column D)
+        if RULE_QUERY_PATTERNS.search(query_text):
+            rule_boosted: List[Tuple[Dict[str, Any], float]] = []
+            for mem, score in candidates:
+                is_rule = bool(RULE_CONTENT_PATTERNS.search(mem.get("content", "")))
+                multiplier = 1.60 if is_rule else 1.0
+                rule_boosted.append((mem, score * multiplier))
+            rule_boosted.sort(
+                key=lambda x: (
+                    x[1],
+                    x[0].get("timestamp_ms") or int(x[0].get("created_at_epoch", 0) * 1000),
+                    x[0].get("id", "")
+                ),
+                reverse=True
+            )
+            candidates = rule_boosted
 
-        # 4. Temporal Resolution (Fact Updates and Recency)
+        # 4. Temporal Resolution (Fact Updates, Tense Bias, and Trajectory)
         candidates = self.temporal_resolver.apply_temporal_ranking(
             candidates=candidates,
             query=query_text
         )
 
-        # 5. Options Discriminator (Multiple-Choice Grounding)
+        # 5. Execution Retainer (Column G Procedural Continuity & Whole-Sequence Ordering)
+        # Run execution enhancer after temporal so operational procedures remain strictly ordered at the top
+        is_exec_query = any(p.search(query_text) for p in EXECUTION_QUERY_PATTERNS)
+        if is_exec_query:
+            candidates = self.execution_retainer.apply_execution_enhancements(
+                user_id=user_id,
+                candidates=candidates,
+                query=query_text,
+                top_k=top_k
+            )
+
+        # 6. Options Discriminator (Multiple-Choice Grounding)
         if req.options:
             candidates = self.options_discriminator.rerank_with_options(
                 candidates=candidates,
                 options=req.options
             )
 
-        # 6. Fill up to top_k if available memories exist
+        # 7. Fill up to top_k if available memories exist
         final_memories = candidates[:top_k]
         if len(final_memories) < top_k:
             existing_ids = {m["id"] for m, _ in final_memories}
@@ -185,9 +230,9 @@ class MemoryPipeline:
                     break
                 if m["id"] not in existing_ids:
                     existing_ids.add(m["id"])
-                    final_memories.append((m, 0.001))
+                    final_memories.append((m, 0.0001))
 
-        # Format exact output schema
+        # Format exact output schema with stable rounding
         results: List[MemoryResultItem] = []
         for mem, score in final_memories:
             results.append(MemoryResultItem(

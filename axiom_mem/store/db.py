@@ -211,6 +211,28 @@ class SQLiteStore:
             """, (user_id, session_id, min_idx, max_idx))
             return [dict(row) for row in cur.fetchall()]
 
+    def get_session_procedure_block(self, user_id: str, session_id: str) -> List[Dict[str, Any]]:
+        """Retrieve all procedural and operational steps for a session in strict chronological execution order."""
+        with self._get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT * FROM memories
+                WHERE user_id = ? AND session_id = ?
+                ORDER BY msg_index ASC, timestamp_ms ASC, created_at_epoch ASC;
+            """, (user_id, session_id))
+            return [dict(row) for row in cur.fetchall()]
+
+    def get_latest_user_timestamp(self, user_id: str) -> Optional[int]:
+        """Fetch highest explicit timestamp recorded for this user."""
+        with self._get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT MAX(timestamp_ms) FROM memories
+                WHERE user_id = ? AND timestamp_ms IS NOT NULL;
+            """, (user_id,))
+            row = cur.fetchone()
+            return int(row[0]) if row and row[0] is not None else None
+
     def count_memories(self, user_id: Optional[str] = None) -> int:
         with self._get_connection() as conn:
             cur = conn.cursor()

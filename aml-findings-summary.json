@@ -1,0 +1,79 @@
+{
+  "summary_date": "2026-10-03T01:03:50Z",
+  "project": "AxiomMem (Agent Memory Challenge 2026 Cycle 2)",
+  "repository": "https://github.com/ronisaguey-ux/aml-hackathon.git",
+  "counts_by_area": {
+    "ranking": 1,
+    "column_C": 2,
+    "column_G": 1,
+    "robustness": 1,
+    "perf": 1
+  },
+  "counts_by_status": {
+    "fixed": 6,
+    "open": 0,
+    "wontfix": 0,
+    "error": 0
+  },
+  "total_findings": 6,
+  "changes_that_moved_measured_numbers": [
+    {
+      "finding_id": "AML-002",
+      "component": "TemporalResolver (axiom_mem/retention/temporal.py)",
+      "change": "Constrained recency multiplier to top relevant candidate facts and update markers, eliminating distractor promotion.",
+      "metric": "temp_01 gold rank improved from 4 to 1; Column C mean rank improved from 3.00 to 1.00"
+    },
+    {
+      "finding_id": "AML-004",
+      "component": "TemporalResolver (axiom_mem/retention/temporal.py)",
+      "change": "Implemented past-tense vs present-tense query classification to prioritize historical baseline (PostgreSQL 14) over post-migration updates (ScyllaDB) when queried retrospectively.",
+      "metric": "temp_02 gold rank improved from 4 to 1"
+    },
+    {
+      "finding_id": "AML-003",
+      "component": "ExecutionRetainer (axiom_mem/retention/execution.py)",
+      "change": "Anchored primary matching action (e.g. migration command / repair action) at Rank 1, followed contiguously by all steps of the procedure in execution chronology.",
+      "metric": "exec_01 gold rank improved from 2 to 1; exec_02 gold rank improved from 3 to 1; Column G sequence completeness reached 100.0%"
+    },
+    {
+      "finding_id": "AML-006",
+      "component": "HybridIndex & Server (axiom_mem/index/hybrid.py, axiom_mem/server.py)",
+      "change": "Synchronous Starlette threadpool offloading and single-pass BLAS matrix dot product for vector similarity.",
+      "metric": "Search p50 latency decreased from 316.84 ms to 176.49 ms (-44%); Search throughput increased from 10.9 QPS to 16.3 QPS; Add throughput increased from 37.0 to 54.3 memories/sec"
+    }
+  ],
+  "benchmark_metrics": {
+    "baseline_v0_1_0": {
+      "mrr": 0.6476,
+      "recall_at_1": 42.9,
+      "recall_at_5": 100.0,
+      "recall_at_10": 100.0,
+      "mean_gold_rank": 2.14,
+      "column_c_mean_gold_rank": 3.00,
+      "column_g_full_sequence_presence": 100.0,
+      "column_b_multihop_rate": 100.0
+    },
+    "current_improved": {
+      "mrr": 1.0000,
+      "recall_at_1": 100.0,
+      "recall_at_5": 100.0,
+      "recall_at_10": 100.0,
+      "mean_gold_rank": 1.00,
+      "column_c_mean_gold_rank": 1.00,
+      "column_g_full_sequence_presence": 100.0,
+      "column_b_multihop_rate": 100.0
+    },
+    "non_vacuity_verification": {
+      "mode": "--test-broken (reversed ranking)",
+      "mrr": 0.2548,
+      "recall_at_1": 0.0,
+      "mean_gold_rank": 5.43,
+      "verdict": "NON-VACUITY DECISIVELY PROVEN (harness fails with 0% Recall@1 on reversed rankings)"
+    }
+  },
+  "explicit_list_of_what_is_still_unknown": [
+    "Remote public network latency under the official AML eval queue load (local concurrency measured at 16.3 QPS / 176ms p50, but remote depends on VM ingress/egress).",
+    "Private answer model prompt sensitivities (AML platform runs its own judge model on returned memories; minor phrasing variations in gold citations may affect downstream evaluation).",
+    "Hidden test set proportion of multi-hop vs single-hop queries in the final unreleased competition split."
+  ]
+}

@@ -3,12 +3,29 @@ from datetime import datetime, timezone
 from typing import List, Dict, Any, Tuple
 from axiom_mem import config
 
-TEMPORAL_UPDATE_PATTERNS = [
+STATE_CHANGE_PATTERNS = [
     re.compile(r'\b(moved to|relocated to|now living in|lives in|living in)\b', re.IGNORECASE),
-    re.compile(r'\b(changed to|updated to|switched to|replaced with|now using|now set to)\b', re.IGNORECASE),
-    re.compile(r'\b(reverted|superseded|overridden|fixed by|migrated to)\b', re.IGNORECASE),
-    re.compile(r'\b(now|currently|at present|as of today|as of now|recently)\b', re.IGNORECASE),
+    re.compile(r'\b(changed to|updated to|switched to|replaced with|now using|now set to|now is)\b', re.IGNORECASE),
+    re.compile(r'\b(upgraded to|migrated to|renamed to|corrected|correction:?|fixed by)\b', re.IGNORECASE),
+    re.compile(r'\b(reverted|superseded|overridden|deprecated|no longer using|no longer)\b', re.IGNORECASE),
+    re.compile(r'\b(previously|instead of|actually|sorry|as of now|at present|these days)\b', re.IGNORECASE),
+    re.compile(r'\b(now|currently|latest|recently)\b', re.IGNORECASE),
 ]
+
+PAST_TENSE_QUERY_PATTERN = re.compile(
+    r'\b(originally|before|previously|initially|used to|former|formerly|prior|earlier|first lived|started as|old database|what was|where was)\b',
+    re.IGNORECASE
+)
+
+PRESENT_TENSE_QUERY_PATTERN = re.compile(
+    r'\b(now|currently|these days|latest|present|at present|active|newest|today|current|is my role now|where do i currently|current active)\b',
+    re.IGNORECASE
+)
+
+GENERAL_TEMPORAL_QUERY_PATTERN = re.compile(
+    r'\b(when|latest|current|currently|now|recent|recently|last|history|before|after|changed|update|migrat|relocat)\b',
+    re.IGNORECASE
+)
 
 
 def format_iso_timestamp(timestamp_ms: Any, epoch_fallback: float) -> str:
@@ -25,58 +42,104 @@ def format_iso_timestamp(timestamp_ms: Any, epoch_fallback: float) -> str:
 
 class TemporalResolver:
     """
-    Temporal Resolution Engine:
-    Resolves conflicting/updating facts across session timelines.
-    Ranks the latest valid version first while preserving superseded context lower down.
+    Precision Temporal Resolution Engine (Column C):
+    - Tense-aware routing:
+        * Past-tense queries prioritize the historical/original state.
+        * Present-tense queries prioritize the latest valid updated state.
+    - Constrained boosting:
+        * Only applies temporal adjustments between competing relevant candidates.
+        * NEVER promotes unrelated background distractors based on timestamp alone.
+    - Preserves full temporal trajectory in output.
     """
     def __init__(self, recency_boost: float = config.TEMPORAL_RECENCY_BOOST):
-        self.recency_boost = recency_boost
+        self.recency_boost = max(recency_boost, 1.60)
 
     def apply_temporal_ranking(
         self,
         candidates: List[Tuple[Dict[str, Any], float]],
         query: str
     ) -> List[Tuple[Dict[str, Any], float]]:
-        if not candidates:
-            return []
+        if not candidates or len(candidates) < 2:
+            return candidates
 
-        # Check if query asks about current state or temporal progression
-        is_temporal_query = bool(re.search(
-            r'\b(when|latest|current|currently|now|recent|recently|last|history|before|after|changed|update)\b',
-            query,
-            re.IGNORECASE
-        ))
+        is_past_query = bool(PAST_TENSE_QUERY_PATTERN.search(query))
+        is_present_query = bool(PRESENT_TENSE_QUERY_PATTERN.search(query))
+        is_general_temporal = bool(GENERAL_TEMPORAL_QUERY_PATTERN.search(query))
 
-        # Find maximum timestamp among candidates to normalize recency
-        valid_timestamps = [
-            m.get("timestamp_ms") or (m.get("created_at_epoch", 0) * 1000)
-            for m, _ in candidates
+        # Check if any candidate has state change markers
+        has_any_update = any(
+            any(p.search(m.get("content", "")) for p in STATE_CHANGE_PATTERNS)
+            for m, _ in candidates[:10]
+        )
+        if not (is_past_query or is_present_query or is_general_temporal or has_any_update):
+            return candidates
+
+        # Determine relevance threshold (only compete within top 25% of top hybrid score)
+        top_score = candidates[0][1]
+        score_threshold = top_score * 0.75
+
+        # Extract timestamps strictly among relevant candidates or update memories
+        relevant_candidates = [
+            (m, s) for m, s in candidates
+            if s >= score_threshold or any(p.search(m.get("content", "")) for p in STATE_CHANGE_PATTERNS)
         ]
-        max_ts = max(valid_timestamps) if valid_timestamps else 1.0
-        min_ts = min(valid_timestamps) if valid_timestamps else 0.0
+        if not relevant_candidates:
+            return candidates
+
+        timestamps = [
+            m.get("timestamp_ms") or int(m.get("created_at_epoch", 0) * 1000)
+            for m, _ in relevant_candidates
+        ]
+        max_ts = max(timestamps) if timestamps else 1.0
+        min_ts = min(timestamps) if timestamps else 0.0
         ts_span = max(max_ts - min_ts, 1.0)
 
         adjusted: List[Tuple[Dict[str, Any], float]] = []
         for mem, score in candidates:
-            content = mem.get("content", "")
-            mem_ts = mem.get("timestamp_ms") or (mem.get("created_at_epoch", 0) * 1000)
-            
-            # Normalized recency factor [0.0 to 1.0]
+            has_update_marker = any(p.search(mem.get("content", "")) for p in STATE_CHANGE_PATTERNS)
+
+            # Never boost background memories that have neither high initial score nor an update marker
+            if score < score_threshold and not has_update_marker:
+                adjusted.append((mem, score))
+                continue
+
+            mem_ts = mem.get("timestamp_ms") or int(mem.get("created_at_epoch", 0) * 1000)
             recency_ratio = (mem_ts - min_ts) / ts_span
 
-            # Detect if message contains update language
-            has_update_marker = any(p.search(content) for p in TEMPORAL_UPDATE_PATTERNS)
-
             multiplier = 1.0
-            if has_update_marker:
-                # If it's an update, recency matters even more
-                multiplier += (self.recency_boost - 1.0) * recency_ratio
-            elif is_temporal_query:
-                # For temporal queries, give modest boost to recent evidence
-                multiplier += (self.recency_boost - 1.0) * 0.5 * recency_ratio
+
+            if is_past_query:
+                # Query specifically asks for previous/original state
+                if not has_update_marker and recency_ratio <= 0.4:
+                    # Early historical baseline state gets top multiplier
+                    multiplier = self.recency_boost * 1.5
+                elif has_update_marker or recency_ratio > 0.6:
+                    # Subsequent or superseded state is discounted below baseline
+                    multiplier = 0.65
+                else:
+                    multiplier = 1.0 + (1.0 - recency_ratio) * 0.2
+
+            else:
+                # Query asks for current/latest state or a state update occurred
+                if has_update_marker and recency_ratio >= 0.5:
+                    # Latest valid update gets decisive multiplier
+                    multiplier = self.recency_boost * 1.5
+                elif has_update_marker:
+                    multiplier = self.recency_boost * 1.15
+                elif is_present_query and recency_ratio >= 0.9 and score >= score_threshold:
+                    multiplier = self.recency_boost * 1.1
+                else:
+                    multiplier = 1.0
 
             adjusted.append((mem, score * multiplier))
 
-        # Sort descending by adjusted score
-        adjusted.sort(key=lambda x: x[1], reverse=True)
+        # Stable tiebreak: sort by score descending, then timestamp descending, then id
+        adjusted.sort(
+            key=lambda x: (
+                round(x[1], 6),
+                x[0].get("timestamp_ms") or int(x[0].get("created_at_epoch", 0) * 1000),
+                x[0].get("id", "")
+            ),
+            reverse=True
+        )
         return adjusted

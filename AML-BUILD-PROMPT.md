@@ -46,16 +46,25 @@ what the other fifteen systems are, and it is why they cluster at 41.
 
 - **Organiser:** CSIG (China Society of Image and Graphics); platform is the Agent Memory Leaderboard
   (AML), backed by ~20 universities (Tsinghua, Peking, Oxford, HKUST, NTU, SJTU, Zhejiang, Fudan…).
-- **Prize pool:** ¥150,000 total, **¥50,000 per track**, open-source methods only.
-  Per track: 1st ¥20,000 · two 2nd at ¥8,000 · three 3rd at ¥3,000 · Best Technical Innovation ¥5,000.
-  *(≈ $2,800 for first in a track — plus the technical-innovation prize is a separate ¥5,000 that a
-  novel method can win even without topping the table.)*
+- **Prize pool:** **over US$22,000 total**, open-source methods only. *(Their own press release,
+  2026-09-28: "more than US$22,000 in total prizes, with US$3,000 awarded to the first-place team in
+  each track" — so **first in a track is ≈$3,000**, not the track's whole pool. Do not quote a bigger
+  number; this figure is verified against the organiser's release, the per-track breakdown on the
+  Chinese page is the same money in RMB.)* Plus a separate technical-innovation prize a novel method
+  can win without topping the table.
 - **Three tracks, ranked independently:** **Textual Memory**, **Coding Memory**, **Multimodal Memory**.
 - **Two divisions:** Open-source Methods (prize-eligible, needs a public repo at a fixed commit) and
   Commercial Products (ranked separately, **not** prize-eligible).
 - **Deadlines:** materials due **2026-10-31 23:59 UTC+8**; evaluation queue closes **2026-11-04**;
   results mid-November. **Two Full evaluations per key per track**, second only after 30 days.
 - **Entry is free.** You pay your own hosting; the organiser pays for answer generation and judging.
+- **★ ELIGIBILITY — VERIFIED OPEN TO AN INDIVIDUAL MINOR.** Their press release: *"Participation is
+  free and open to researchers, open-source teams, commercial AI teams, and **individual developers
+  worldwide**."* **No age gate, no student status, no degree, no team minimum** — an independent
+  individual can enter solo. This matters because most large cash hackathons gate at 18 (age of
+  majority, because prize law bars paying a minor); this one does not. **The one unknown is
+  CROSS-BORDER PRIZE PAYMENT to a US minor via a Chinese organiser** — not an eligibility rule, a
+  logistics question. If we place, ask `amlchallenge97@gmail.com` how payout to a minor is handled.
 
 ### The two tracks worth entering
 
