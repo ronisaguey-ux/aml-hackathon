@@ -1,3 +1,4 @@
+import os
 import time
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request, status
@@ -43,6 +44,34 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ★ OPTIONAL API-KEY AUTH (AML evaluation request declares an auth scheme + key).
+#
+# Gated on `AXIOM_API_KEY`: when the variable is unset the middleware is inert and
+# the service behaves exactly as before, so enabling it can never break a running
+# deployment that has not opted in. When set, every route except the liveness and
+# introspection endpoints requires the key, accepted either as `Authorization:
+# Bearer <key>` or `X-Api-Key: <key>` -- the two schemes the AML contract names.
+# `/health` stays open so the platform's reachability check and the keep-alive
+# monitor do not need credentials.
+# ─────────────────────────────────────────────────────────────────────────────
+_API_KEY = os.environ.get("AXIOM_API_KEY", "").strip()
+_OPEN_PATHS = {"/", "/health", "/stats"}
+
+
+@app.middleware("http")
+async def _require_api_key(request: Request, call_next):
+    if not _API_KEY or request.url.path in _OPEN_PATHS:
+        return await call_next(request)
+    if request.method == "OPTIONS":
+        return await call_next(request)
+    raw = request.headers.get("authorization", "") or request.headers.get("x-api-key", "")
+    token = raw[7:].strip() if raw.lower().startswith("bearer ") else raw.strip()
+    if token != _API_KEY:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    return await call_next(request)
 
 
 @app.get("/")
