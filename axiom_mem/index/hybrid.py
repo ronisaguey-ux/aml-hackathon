@@ -45,15 +45,16 @@ class HybridIndex:
                 sims = np.dot(matrix, query_vector)
                 top_indices = np.argsort(-sims)[:candidate_pool_size]
                 for rank, idx in enumerate(top_indices):
-                    dense_ranks[emb_ids[idx]] = rank + 1
+                    sim_val = float(sims[idx])
+                    if sim_val >= config.MIN_RELEVANCE_SIMILARITY:
+                        dense_ranks[emb_ids[idx]] = rank + 1
             except Exception:
                 pass
 
         # 3. Reciprocal Rank Fusion (RRF)
         all_candidate_ids = set(bm25_ranks.keys()).union(set(dense_ranks.keys()))
         if not all_candidate_ids:
-            all_user_memories = self.store.get_all_memories_for_user(user_id=user_id, limit=top_k)
-            return [(m, 0.0) for m in all_user_memories[:top_k]]
+            return []
 
         k = config.RRF_K
         bm25_w = config.BM25_WEIGHT
@@ -68,8 +69,9 @@ class HybridIndex:
                 score += dense_w * (1.0 / (k + dense_ranks[mem_id]))
             scored_ids.append((mem_id, score))
 
-        scored_ids.sort(key=lambda x: x[1], reverse=True)
+        scored_ids.sort(key=lambda x: (round(x[1], 8), x[0]), reverse=True)
         top_ids = [m_id for m_id, _ in scored_ids[:candidate_pool_size]]
+
 
         # Lazy fetch: only read full rows for the top fused candidate IDs
         memories_by_id = self.store.get_memories_by_ids(user_id, top_ids)

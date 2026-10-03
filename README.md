@@ -176,25 +176,48 @@ python scripts/smoke_test.py --base-url http://localhost:8000
 # 3. Run capability probe suite (Temporal, Execution, Composition, Options)
 python scripts/probe_suite.py --base-url http://localhost:8000
 
-# 4. Run local benchmark harness (MRR: 1.0000 | Recall@1: 100.0%)
+# 4. Run local benchmark harness (66 un-saturated scenarios with 50+ distractor floods)
 python scripts/eval_harness.py --base-url http://localhost:8000
 
-# 5. Run non-vacuity check (verifies harness fails decisively on reversed rankings)
+# 5. Run non-vacuity check (verifies all columns fail decisively under intra-sequence shuffling)
 python scripts/eval_harness.py --base-url http://localhost:8000 --test-broken
 
-# 6. Run load benchmark (Throughput: 16.3 QPS | Search p50: 176 ms)
-python scripts/benchmark_load.py --adds 250 --searches 100 --concurrency 4
+# 6. Run high-concurrency scale benchmark (1,000 adds, 200 searches at top_k=100)
+python scripts/benchmark_scale.py --adds 1000 --searches 200 --concurrency 8
+
 ```
 
 ---
 
-## 5. Docker Deployment
+## 5. Production Deployment & Live Endpoints
 
+### 5.1 Active Public Deployment
+- **Public URL**: `https://acid-reproductive-calculations-downloads.trycloudflare.com`
+- **Supported Endpoints**:
+  - `GET /health` — Service health & uptime probe
+  - `POST /add` & `POST /v1/memories/add` — Ingest messages with immediate visibility
+  - `POST /search` & `POST /v1/memories/search` — High-recall hybrid memory retrieval
+
+### 5.2 24/7 Systemd Deployment
+AxiomMem is packaged with production `systemd` units for 24/7 continuous operation across system reboots:
+```bash
+# Install and enable service units
+cp deploy/axiom-mem.service ~/.config/systemd/user/
+cp deploy/axiom-mem-tunnel.service ~/.config/systemd/user/
+cp deploy/axiom-mem-keepalive.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now axiom-mem.service axiom-mem-tunnel.service axiom-mem-keepalive.service
+
+# View live health monitor logs
+cat data/keepalive.log
+```
+
+### 5.3 Docker & Docker Compose
 ```bash
 # Build and run with Docker Compose
-docker compose up -d
+cd deploy && docker compose up -d
 
-# View live logs
+# View live container logs
 docker compose logs -f
 ```
 

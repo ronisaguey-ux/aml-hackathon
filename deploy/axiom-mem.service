@@ -1,0 +1,18 @@
+[Unit]
+Description=AxiomMem Agent Memory Service (AML Challenge Cycle 2)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/roni/Roni_workspace/aml-challenge
+ExecStart=/home/roni/Roni_workspace/aml-challenge/.venv/bin/python scripts/run_server.py --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=3
+Environment=PYTHONUNBUFFERED=1
+Environment=AXIOM_DATA_DIR=/home/roni/Roni_workspace/aml-challenge/data
+Environment=AXIOM_DATA_RETENTION_DAYS=30
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

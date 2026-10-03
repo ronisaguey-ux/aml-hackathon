@@ -68,6 +68,8 @@ async def get_stats():
 
 
 @app.post("/add", response_model=AddResponse, status_code=status.HTTP_200_OK)
+@app.post("/v1/memories/add", response_model=AddResponse, status_code=status.HTTP_200_OK)
+@app.post("/v1/add", response_model=AddResponse, status_code=status.HTTP_200_OK)
 def add_memory(req: AddRequest):
     """
     POST /add endpoint conforming byte-for-byte to AML specification.
@@ -84,6 +86,8 @@ def add_memory(req: AddRequest):
 
 
 @app.post("/search", response_model=SearchResponse, status_code=status.HTTP_200_OK)
+@app.post("/v1/memories/search", response_model=SearchResponse, status_code=status.HTTP_200_OK)
+@app.post("/v1/search", response_model=SearchResponse, status_code=status.HTTP_200_OK)
 def search_memory(req: SearchRequest):
     """
     POST /search endpoint conforming byte-for-byte to AML specification.

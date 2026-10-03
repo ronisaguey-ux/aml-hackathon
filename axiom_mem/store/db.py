@@ -137,7 +137,22 @@ class SQLiteStore:
         We negate it so higher is better.
         """
         # Clean query tokens for FTS5 syntax
-        clean_tokens = [
+        ENGLISH_STOPWORDS = {
+            "a", "an", "the", "and", "or", "but", "if", "because", "as", "what", "which", "this", "that",
+            "these", "those", "then", "just", "so", "than", "such", "both", "through", "about", "for",
+            "is", "of", "while", "during", "to", "from", "in", "out", "on", "off", "again", "further",
+            "then", "once", "here", "there", "when", "where", "why", "how", "all", "any", "both", "each",
+            "few", "more", "most", "other", "some", "such", "no", "nor", "not", "only", "own", "same",
+            "too", "very", "can", "will", "should", "now", "are", "was", "were", "be", "been", "being",
+            "have", "has", "had", "do", "does", "did", "my", "your", "his", "her", "its", "our", "their",
+            "i", "me", "we", "us", "you", "he", "him", "she", "it", "they", "them", "with", "at", "by"
+        }
+        filtered = [
+            t.replace('"', '""').replace("'", "''") 
+            for t in query.split() 
+            if (t.isalnum() or any(c in t for c in ["_", "-", "."])) and t.lower() not in ENGLISH_STOPWORDS
+        ]
+        clean_tokens = filtered if filtered else [
             t.replace('"', '""').replace("'", "''") 
             for t in query.split() 
             if t.isalnum() or any(c in t for c in ["_", "-", "."])

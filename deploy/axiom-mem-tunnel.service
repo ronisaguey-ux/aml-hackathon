@@ -1,0 +1,16 @@
+[Unit]
+Description=AxiomMem Cloudflare Quick Tunnel
+After=axiom-mem.service network-online.target
+Wants=axiom-mem.service network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/roni/Roni_workspace/aml-challenge
+ExecStart=/home/roni/Roni_workspace/aml-challenge/deploy/start_tunnel.sh
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

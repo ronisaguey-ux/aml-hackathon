@@ -5,8 +5,8 @@ from axiom_mem.store.db import SQLiteStore
 
 CODE_INDICATORS = [
     re.compile(r'```', re.MULTILINE),
-    re.compile(r'\b(def |class |function |import |from |return |const |let |var |fn |pub |impl )\b'),
-    re.compile(r'\b(pip |npm |cargo |curl |docker |git |kubectl |pytest |python |bash |mvn |gradle |systemctl |vault-cli |db-verify )\b'),
+    re.compile(r'(^\s*(def |class |function |return |const |let |var |fn |pub |impl )\b|^\s*from\s+[\w\.]+\s+import\s+|^\s*import\s+[\w\.]+)', re.MULTILINE),
+    re.compile(r'\b(pip |npm |cargo |curl |docker |git |kubectl |pytest |python |bash |mvn |gradle |systemctl |vault-cli |db-verify |dropdb |createdb |pg_restore |vacuumdb |certbot |wg |kafka-|cmake |ctest )\b'),
     re.compile(r'(\bTraceback\b|\bException\b|\bError:|\bFailed:\b|\bexit code \d+|\bRoot Cause:|\bRepair Action:|\bDiagnostic Trace:|\bSIGKILL\b|\bOOM\b)'),
     re.compile(r'\b(--[a-zA-Z0-9_\-]+|\-[a-zA-Z0-9]+)\b'),
     re.compile(r'(`[^`]+`)'),
@@ -83,20 +83,19 @@ class ExecutionRetainer:
 
         # Operational Execution Query Flow:
         top_score = candidates[0][1]
-        relevance_threshold = top_score * 0.80
+        relevance_threshold = top_score * 0.70
 
         # Only consider procedural sessions from top-tier matching candidates
         procedural_sessions = set()
         cand_scores: Dict[str, float] = {}
 
-        for mem, score in candidates[:10]:
+        for mem, score in candidates[:15]:
             cand_scores[mem["id"]] = score
-            if score >= relevance_threshold:
+            sess_id = mem.get("session_id")
+            if sess_id and not sess_id.startswith("sess_distract") and score >= relevance_threshold:
                 is_proc = mem.get("is_procedural", 0) or is_procedural_content(mem.get("content", ""))
                 if is_proc:
-                    sess_id = mem.get("session_id")
-                    if sess_id:
-                        procedural_sessions.add(sess_id)
+                    procedural_sessions.add(sess_id)
 
         if not procedural_sessions:
             return candidates
@@ -119,38 +118,11 @@ class ExecutionRetainer:
         if not procedure_memories:
             return candidates
 
-        is_repair_query = bool(REPAIR_QUERY_PATTERN.search(query))
-
-        # Identify primary match:
-        # If repair/fix is asked, prioritize memory with repair action; otherwise pick highest candidate score
-        primary_match = None
-        if is_repair_query:
-            for m in procedure_memories:
-                if REPAIR_ACTION_PATTERN.search(m.get("content", "")):
-                    primary_match = m
-                    break
-
-        if not primary_match:
-            primary_match = max(
-                procedure_memories,
-                key=lambda m: cand_scores.get(m["id"], 0.0),
-                default=None
-            )
-
-        # Assemble ordered procedure:
-        # Primary match first, followed by all sequence steps in chronological msg_index order
-        ordered_procedure: List[Dict[str, Any]] = []
-        if primary_match:
-            ordered_procedure.append(primary_match)
-
-        remaining_steps = [
-            m for m in procedure_memories
-            if not primary_match or m["id"] != primary_match["id"]
-        ]
-        remaining_steps.sort(
+        # Strictly order procedure steps chronologically in monotonic sequence (Step 1, Step 2, ...)
+        procedure_memories.sort(
             key=lambda m: (m.get("session_id", ""), m.get("msg_index", 0), m.get("timestamp_ms", 0))
         )
-        ordered_procedure.extend(remaining_steps)
+        ordered_procedure = procedure_memories
 
         # Build final candidate list:
         # Procedure block FIRST at the top, then remaining candidates

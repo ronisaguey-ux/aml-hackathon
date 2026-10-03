@@ -1,0 +1,30 @@
+version: "3.8"
+
+services:
+  axiom-mem:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: axiom-mem
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - AXIOM_DATA_DIR=/app/data
+      - AXIOM_DATA_RETENTION_DAYS=30
+      - AXIOM_EMBEDDING_PROVIDER=fastembed
+      - AXIOM_HOST=0.0.0.0
+      - AXIOM_PORT=8000
+    volumes:
+      - axiom_data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  axiom_data:
+    driver: local

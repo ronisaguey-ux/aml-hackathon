@@ -74,10 +74,15 @@ class MessageItem(BaseModel):
 class AddRequest(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
-    request_id: str
+    request_id: Optional[str] = None
     messages: List[MessageItem]
-    user_id: str
-    session_id: str
+    user_id: str = "default_user"
+    session_id: str = "default_session"
+
+    def model_post_init(self, __context: Any) -> None:
+        if not self.request_id:
+            import uuid
+            self.request_id = str(uuid.uuid4())
 
 
 class AddResponse(BaseModel):
@@ -94,7 +99,7 @@ class SearchRequest(BaseModel):
 
     query: Union[str, List[Any], Dict[str, Any]]
     options: Optional[List[str]] = None
-    user_id: str
+    user_id: str = "default_user"
     top_k: int = 100
 
     def get_query_text(self) -> str:

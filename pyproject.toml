@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "axiom-mem"
-version = "0.1.0"
+version = "0.3.0"
 description = "AxiomMem: High-performance memory system engineered for execution continuity, temporal resolution, and zero-loss retrieval (AML Challenge Cycle 2)"
 readme = "README.md"
 requires-python = ">=3.10"

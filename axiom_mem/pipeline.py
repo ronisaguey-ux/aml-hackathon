@@ -160,16 +160,8 @@ class MemoryPipeline:
         )
 
         if not candidates:
-            # Check if user has any memories stored at all
-            all_mem = self.store.get_all_memories_for_user(user_id=user_id, limit=top_k)
-            return SearchResponse(data=[
-                MemoryResultItem(
-                    id=m["id"],
-                    content=m["content"],
-                    score=0.1,
-                    created_at=m["created_at_iso"]
-                ) for m in all_mem
-            ])
+            return SearchResponse(data=[])
+
 
         # 2. Composition Expansion (Multi-Hop Column B)
         candidates = self.composition_expander.expand_multihop(
@@ -220,17 +212,9 @@ class MemoryPipeline:
                 options=req.options
             )
 
-        # 7. Fill up to top_k if available memories exist
+        # 7. Restrict results to top_k retrieved candidates
         final_memories = candidates[:top_k]
-        if len(final_memories) < top_k:
-            existing_ids = {m["id"] for m, _ in final_memories}
-            all_user_mem = self.store.get_all_memories_for_user(user_id=user_id, limit=top_k)
-            for m in all_user_mem:
-                if len(final_memories) >= top_k:
-                    break
-                if m["id"] not in existing_ids:
-                    existing_ids.add(m["id"])
-                    final_memories.append((m, 0.0001))
+
 
         # Format exact output schema with stable rounding
         results: List[MemoryResultItem] = []

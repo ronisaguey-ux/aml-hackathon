@@ -123,11 +123,14 @@ class TemporalResolver:
                 # Query asks for current/latest state or a state update occurred
                 if has_update_marker and recency_ratio >= 0.5:
                     # Latest valid update gets decisive multiplier
-                    multiplier = self.recency_boost * 1.5
-                elif has_update_marker:
-                    multiplier = self.recency_boost * 1.15
-                elif is_present_query and recency_ratio >= 0.9 and score >= score_threshold:
-                    multiplier = self.recency_boost * 1.1
+                    multiplier = self.recency_boost * 2.0
+                elif recency_ratio >= 0.7:
+                    multiplier = self.recency_boost * 1.3
+                elif is_present_query and recency_ratio < 0.5:
+                    # Superseded earlier state is discounted when querying for current state
+                    multiplier = 0.70
+                elif recency_ratio < 0.4:
+                    multiplier = 0.85
                 else:
                     multiplier = 1.0
 
