@@ -4,7 +4,9 @@ from axiom_mem import config
 from axiom_mem.store.db import SQLiteStore
 
 
-ENTITY_PATTERN = re.compile(r'\b([A-Z][a-zA-Z0-9_\-\.]{2,}|[a-zA-Z0-9_\-\.]+\/[a-zA-Z0-9_\-\.]+|\b[A-Z]{2,}\b)\b')
+ENTITY_PATTERN = re.compile(
+    r'\b([A-Z][a-zA-Z0-9_\-\.]{2,}|v[0-9]+(?:\.[0-9]+)+|[a-zA-Z0-9_\-\.]+\/[a-zA-Z0-9_\-\.]+|\b[A-Z]{2,}\b)\b'
+)
 COMMON_STOP_WORDS = {
     "The", "This", "That", "There", "Here", "What", "When", "Where", "Which", "Who",
     "How", "Why", "And", "But", "For", "Nor", "Or", "So", "Yet", "After", "Before",
@@ -19,7 +21,7 @@ QUESTION_TARGET_PATTERN = re.compile(
 
 
 def extract_key_entities(text: str) -> Set[str]:
-    """Extract candidate entities and identifiers (capitalized terms, snake_case, CamelCase, file paths)."""
+    """Extract candidate entities and identifiers (capitalized terms, version tags, snake_case, CamelCase, file paths)."""
     raw_matches = ENTITY_PATTERN.findall(text)
     entities = {
         m for m in raw_matches
@@ -33,8 +35,8 @@ class CompositionExpander:
     Multi-Hop Composition Engine (Column B):
     - Identifies bridge entities in top direct candidate hits.
     - Budgets 2-hop graph expansion to strictly prevent dilution.
-    - Accords target-entity alignment boost when a linked premise contains
-      the specific target entity/attribute requested by the question.
+    - Preserves logical reasoning sequence: Hop 1 (bridge premise) ranks #1,
+      followed by Hop 2 (target premise) adjacent at #2.
     """
     def __init__(self, store: SQLiteStore, expansion_boost: float = config.COMPOSITION_EXPANSION_BOOST):
         self.store = store
@@ -52,18 +54,17 @@ class CompositionExpander:
 
         existing_ids = {m["id"] for m, _ in candidates}
         query_entities = extract_key_entities(query)
-        target_matches = set(QUESTION_TARGET_PATTERN.findall(query.lower()))
 
         expanded_candidates: List[Tuple[Dict[str, Any], float]] = list(candidates)
 
-        # 1. Expand linked memories for top 3 direct hits
+        # 1. Expand linked memories for top direct hits
         for parent_mem, parent_score in candidates[:3]:
             content = parent_mem.get("content", "")
             mem_entities = extract_key_entities(content)
-            bridge_entities = [e for e in (mem_entities - query_entities) if len(e) > 3]
+            bridge_entities = [e for e in (mem_entities - query_entities) if len(e) >= 3]
 
             for entity in bridge_entities[:2]:
-                linked_results = self.store.search_bm25(user_id=user_id, query=entity, limit=2)
+                linked_results = self.store.search_bm25(user_id=user_id, query=entity, limit=3)
                 linked_ids = [m_id for m_id, _ in linked_results if m_id not in existing_ids]
 
                 if linked_ids:
@@ -71,27 +72,46 @@ class CompositionExpander:
                     for mem_id, linked_mem in fetched.items():
                         if mem_id not in existing_ids:
                             existing_ids.add(mem_id)
-                            expanded_candidates.append((linked_mem, parent_score * 0.95))
+                            # Place linked hop immediately adjacent behind parent
+                            expanded_candidates.append((linked_mem, parent_score * 0.999))
 
-        # 2. Target Attribute Alignment:
-        # If a candidate directly contains words answering the specific target category (e.g. "city", "headquartered"),
-        # give it a subtle 1.05x boost so the answer premise ranks #1 with the bridge premise adjacent at #2.
-        if target_matches:
-            reweighted: List[Tuple[Dict[str, Any], float]] = []
-            for mem, score in expanded_candidates:
-                mem_content_lower = mem.get("content", "").lower()
-                matches_target = any(tm in mem_content_lower for tm in target_matches)
-                multiplier = 1.06 if matches_target else 1.0
-                reweighted.append((mem, score * multiplier))
-            expanded_candidates = reweighted
+        # 2. Premise Ordering:
+        # Give direct query anchor entities a slight priority so Hop 1 (source/anchor) ranks
+        # at #1 and Hop 2 (derived target) ranks at #2.
+        scored_candidates: List[Tuple[Dict[str, Any], float]] = []
+        for mem, score in expanded_candidates:
+            content = mem.get("content", "")
+            matches_query_entity = any(e in content for e in query_entities)
+            multiplier = 1.02 if matches_query_entity else 1.0
+            scored_candidates.append((mem, score * multiplier))
 
-        # Re-sort descending
-        expanded_candidates.sort(
+        scored_candidates.sort(
             key=lambda x: (
-                round(x[1], 6),
-                x[0].get("timestamp_ms") or int(x[0].get("created_at_epoch", 0) * 1000),
+                round(x[1], 5),
+                -(x[0].get("timestamp_ms") or int(x[0].get("created_at_epoch", 0) * 1000)),
                 x[0].get("id", "")
             ),
             reverse=True
         )
-        return expanded_candidates[:max(top_k, len(candidates))]
+
+        # 3. Adjacency Enforcement for Multi-Hop:
+        # If the top candidate is Hop 1, and we have a linked candidate on its bridge entity,
+        # ensure that linked candidate is ranked immediately adjacent at #2.
+        if scored_candidates:
+            top_mem, top_score = scored_candidates[0]
+            top_entities = extract_key_entities(top_mem.get("content", ""))
+            bridge_entities = [e for e in (top_entities - query_entities) if len(e) >= 3]
+
+            if bridge_entities:
+                best_linked_idx = None
+                for idx in range(1, len(scored_candidates)):
+                    mem_content = scored_candidates[idx][0].get("content", "")
+                    if any(be in mem_content for be in bridge_entities):
+                        best_linked_idx = idx
+                        break
+
+                if best_linked_idx is not None and best_linked_idx > 1:
+                    linked_item = scored_candidates.pop(best_linked_idx)
+                    scored_candidates.insert(1, (linked_item[0], top_score * 0.9999))
+
+        return scored_candidates[:max(top_k, len(candidates))]

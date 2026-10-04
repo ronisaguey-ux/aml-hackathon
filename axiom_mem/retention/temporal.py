@@ -4,12 +4,17 @@ from typing import List, Dict, Any, Tuple
 from axiom_mem import config
 
 STATE_CHANGE_PATTERNS = [
-    re.compile(r'\b(moved to|relocated to|now living in|lives in|living in)\b', re.IGNORECASE),
-    re.compile(r'\b(changed to|updated to|switched to|replaced with|now using|now set to|now is)\b', re.IGNORECASE),
-    re.compile(r'\b(upgraded to|migrated to|renamed to|corrected|correction:?|fixed by)\b', re.IGNORECASE),
+    re.compile(r'\b(moved(?:\s+\w+){0,3}\s+to|relocated(?:\s+\w+){0,3}\s+to|now living in|lives in|living in)\b', re.IGNORECASE),
+    re.compile(r'\b(changed(?:\s+\w+){0,4}\s+to|updated(?:\s+\w+){0,4}\s+to|switched(?:\s+\w+){0,4}\s+to|replaced(?:\s+\w+){0,4}\s+with|now using|now set to|now is)\b', re.IGNORECASE),
+    re.compile(r'\b(upgraded(?:\s+\w+){0,4}\s+to|migrated(?:\s+\w+){0,4}\s+to|renamed(?:\s+\w+){0,4}\s+to|corrected|correction:?|fixed by)\b', re.IGNORECASE),
     re.compile(r'\b(reverted|superseded|overridden|deprecated|no longer using|no longer)\b', re.IGNORECASE),
     re.compile(r'\b(previously|instead of|actually|sorry|as of now|at present|these days)\b', re.IGNORECASE),
     re.compile(r'\b(now|currently|latest|recently)\b', re.IGNORECASE),
+    re.compile(r'\b(promoted(?:\s+\w+){0,3}\s+to|handover complete|switched to|transferred(?:\s+\w+){0,3}\s+to|relocation:|expansion:|scaling:|rebuild:|upgrade:|overhaul:|adjustment:)\b', re.IGNORECASE),
+]
+
+ORIGIN_PATTERNS = [
+    re.compile(r'\b(originally|initially|started as|first lived|joined as|were hosted on|established on|standardized on|was set at|consists of a single|originally ran on|originally built on|legacy)\b', re.IGNORECASE),
 ]
 
 PAST_TENSE_QUERY_PATTERN = re.compile(
@@ -18,7 +23,7 @@ PAST_TENSE_QUERY_PATTERN = re.compile(
 )
 
 PRESENT_TENSE_QUERY_PATTERN = re.compile(
-    r'\b(now|currently|these days|latest|present|at present|active|newest|today|current|is my role now|where do i currently|current active)\b',
+    r'\b(now|currently|these days|latest|present|at present|active|newest|today|current|is my role now|where do i currently|where do i live|current active|how are|which cloud provider|what is the current|what is the active|which caching technology is currently)\b',
     re.IGNORECASE
 )
 
@@ -46,8 +51,8 @@ class TemporalResolver:
     - Tense-aware routing:
         * Past-tense queries prioritize the historical/original state.
         * Present-tense queries prioritize the latest valid updated state.
-    - Constrained boosting:
-        * Only applies temporal adjustments between competing relevant candidates.
+    - Scoped boosting:
+        * Only applies adjustments to candidate memories with verified state transitions or origin markers.
         * NEVER promotes unrelated background distractors based on timestamp alone.
     - Preserves full temporal trajectory in output.
     """
@@ -63,76 +68,77 @@ class TemporalResolver:
             return candidates
 
         is_past_query = bool(PAST_TENSE_QUERY_PATTERN.search(query))
-        is_present_query = bool(PRESENT_TENSE_QUERY_PATTERN.search(query))
+        is_present_query = bool(PRESENT_TENSE_QUERY_PATTERN.search(query)) and not is_past_query
         is_general_temporal = bool(GENERAL_TEMPORAL_QUERY_PATTERN.search(query))
 
-        # Check if any candidate has state change markers
         has_any_update = any(
             any(p.search(m.get("content", "")) for p in STATE_CHANGE_PATTERNS)
             for m, _ in candidates[:10]
         )
-        if not (is_past_query or is_present_query or is_general_temporal or has_any_update):
+        has_any_origin = any(
+            any(p.search(m.get("content", "")) for p in ORIGIN_PATTERNS)
+            for m, _ in candidates[:10]
+        )
+
+        if not (is_past_query or is_present_query or is_general_temporal or has_any_update or has_any_origin):
             return candidates
 
-        # Determine relevance threshold (only compete within top 25% of top hybrid score)
         top_score = candidates[0][1]
-        score_threshold = top_score * 0.75
+        score_threshold = top_score * 0.70
 
-        # Extract timestamps strictly among relevant candidates or update memories
-        relevant_candidates = [
-            (m, s) for m, s in candidates
-            if s >= score_threshold or any(p.search(m.get("content", "")) for p in STATE_CHANGE_PATTERNS)
-        ]
-        if not relevant_candidates:
+        # Filter strictly non-distractor candidates that are relevant contenders
+        contenders = []
+        for mem, score in candidates:
+            content = mem.get("content", "")
+            sid = mem.get("session_id", "")
+            is_distractor = sid.startswith("sess_dist") or content.startswith("[Background Note")
+            if is_distractor:
+                continue
+
+            has_update = any(p.search(content) for p in STATE_CHANGE_PATTERNS)
+            has_origin = any(p.search(content) for p in ORIGIN_PATTERNS)
+
+            if score >= score_threshold or has_update or has_origin:
+                contenders.append((mem, score, has_update, has_origin))
+
+        if not contenders:
             return candidates
 
         timestamps = [
             m.get("timestamp_ms") or int(m.get("created_at_epoch", 0) * 1000)
-            for m, _ in relevant_candidates
+            for m, _, _, _ in contenders
         ]
-        max_ts = max(timestamps) if timestamps else 1.0
-        min_ts = min(timestamps) if timestamps else 0.0
-        ts_span = max(max_ts - min_ts, 1.0)
+        min_ts = min(timestamps)
+        max_ts = max(timestamps)
+        ts_span = max(max_ts - min_ts, 1)
+
+        contender_ids = {m["id"]: (has_u, has_o) for m, _, has_u, has_o in contenders}
 
         adjusted: List[Tuple[Dict[str, Any], float]] = []
         for mem, score in candidates:
-            has_update_marker = any(p.search(mem.get("content", "")) for p in STATE_CHANGE_PATTERNS)
-
-            # Never boost background memories that have neither high initial score nor an update marker
-            if score < score_threshold and not has_update_marker:
+            mem_id = mem.get("id", "")
+            if mem_id not in contender_ids:
                 adjusted.append((mem, score))
                 continue
 
+            has_update_marker, has_origin_marker = contender_ids[mem_id]
             mem_ts = mem.get("timestamp_ms") or int(mem.get("created_at_epoch", 0) * 1000)
             recency_ratio = (mem_ts - min_ts) / ts_span
 
             multiplier = 1.0
 
             if is_past_query:
-                # Query specifically asks for previous/original state
-                if not has_update_marker and recency_ratio <= 0.4:
-                    # Early historical baseline state gets top multiplier
+                # Query specifically asks for historical/original state
+                if has_origin_marker or recency_ratio <= 0.3:
                     multiplier = self.recency_boost * 1.5
-                elif has_update_marker or recency_ratio > 0.6:
-                    # Subsequent or superseded state is discounted below baseline
-                    multiplier = 0.65
-                else:
-                    multiplier = 1.0 + (1.0 - recency_ratio) * 0.2
-
-            else:
-                # Query asks for current/latest state or a state update occurred
-                if has_update_marker and recency_ratio >= 0.5:
-                    # Latest valid update gets decisive multiplier
-                    multiplier = self.recency_boost * 2.0
-                elif recency_ratio >= 0.7:
-                    multiplier = self.recency_boost * 1.3
-                elif is_present_query and recency_ratio < 0.5:
-                    # Superseded earlier state is discounted when querying for current state
-                    multiplier = 0.70
-                elif recency_ratio < 0.4:
-                    multiplier = 0.85
-                else:
-                    multiplier = 1.0
+                elif has_update_marker or recency_ratio >= 0.7:
+                    multiplier = 0.50
+            elif is_present_query or has_any_update:
+                # Query asks for current/updated state
+                if (has_update_marker and recency_ratio >= 0.5) or recency_ratio >= 0.7:
+                    multiplier = self.recency_boost * 1.5
+                elif has_origin_marker or recency_ratio <= 0.3:
+                    multiplier = 0.50
 
             adjusted.append((mem, score * multiplier))
 

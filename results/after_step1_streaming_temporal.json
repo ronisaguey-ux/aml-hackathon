@@ -1,0 +1,38 @@
+{
+  "overall_mrr": 0.8624209124209125,
+  "overall_mean_rank": 4.53030303030303,
+  "recall_at_1": 80.3030303030303,
+  "recall_at_5": 93.93939393939394,
+  "recall_at_10": 95.45454545454545,
+  "eval_duration_sec": 3.0664637088775635,
+  "breakdown": {
+    "column_c_temporal": {
+      "mrr": 1.0,
+      "mean_rank": 1.0,
+      "rank1_rate": 100.0
+    },
+    "column_g_execution": {
+      "mrr": 0.894017094017094,
+      "mean_rank": 1.9333333333333333,
+      "ordered_rate": 80.0
+    },
+    "column_b_multihop": {
+      "mrr": 0.5424603174603174,
+      "mean_rank": 2.5833333333333335,
+      "both_hops_rate": 91.66666666666666,
+      "hops_adjacent_rate": 58.333333333333336,
+      "hops_ordered_rate": 58.333333333333336
+    },
+    "column_d_rules": {
+      "mrr": 1.0,
+      "rank1_rate": 100.0
+    },
+    "column_e_streaming": {
+      "mrr": 1.0,
+      "rank1_rate": 100.0
+    },
+    "column_f_governance": {
+      "accuracy": 75.0
+    }
+  }
+}

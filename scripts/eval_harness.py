@@ -16,9 +16,11 @@ Includes:
 - Full per-category performance breakdown table
 """
 
+import os
 import sys
 import time
 import random
+import hashlib
 import argparse
 from typing import List, Dict, Any, Tuple
 import numpy as np
@@ -30,7 +32,8 @@ from eval_scenarios import ALL_SCENARIOS, get_distractor_messages
 def run_evaluation(
     base_url: str,
     simulate_broken_ranking: bool = False,
-    include_distractor_floods: bool = True
+    include_distractor_floods: bool = True,
+    api_key: str = ""
 ) -> Dict[str, Any]:
     print("=" * 76)
     print("📊 AXIOM-MEM OFFICIAL EVALUATION HARNESS (v0.3.0)")
@@ -41,7 +44,9 @@ def run_evaluation(
         print("⚠️ NON-VACUITY TEST MODE: Simulating intra-sequence shuffling and corrupted ranking!")
     print("=" * 76)
 
-    client = httpx.Client(base_url=base_url, timeout=45.0)
+    key = api_key or os.environ.get("AXIOM_API_KEY", "").strip()
+    headers = {"Authorization": f"Bearer {key}"} if key else {}
+    client = httpx.Client(base_url=base_url, timeout=45.0, headers=headers)
 
     # Global tracking metrics
     reciprocal_ranks = []
@@ -102,7 +107,8 @@ def run_evaluation(
 
         # Non-vacuity mode: apply intra-sequence shuffling and inversion
         if simulate_broken_ranking and data:
-            rng = random.Random(1337 + hash(s_id))
+            seed_val = 1337 + int(hashlib.md5(s_id.encode()).hexdigest()[:8], 16)
+            rng = random.Random(seed_val)
             data_shuffled = list(data)
             rng.shuffle(data_shuffled)
             data = data_shuffled
@@ -370,13 +376,22 @@ if __name__ == "__main__":
     parser.add_argument("--base-url", default="http://localhost:8000")
     parser.add_argument("--test-broken", action="store_true", help="Simulate broken ranking to prove non-vacuity across all columns")
     parser.add_argument("--no-distractors", action="store_true", help="Disable 50+ distractor floods")
+    parser.add_argument("--save-json", default="", help="Optional file path to save JSON results")
+    parser.add_argument("--api-key", default=os.environ.get("AXIOM_API_KEY", ""), help="API key for authentication")
     args = parser.parse_args()
 
     results = run_evaluation(
         base_url=args.base_url,
         simulate_broken_ranking=args.test_broken,
-        include_distractor_floods=not args.no_distractors
+        include_distractor_floods=not args.no_distractors,
+        api_key=args.api_key
     )
+
+    if args.save_json:
+        import json
+        with open(args.save_json, "w") as f:
+            json.dump(results, f, indent=2)
+        print(f"\n💾 Saved evaluation results to {args.save_json}")
 
     if args.test_broken:
         print("\n🔎 VERIFYING NON-VACUITY INVARIANTS ACROSS ALL COLUMNS:")
@@ -395,5 +410,6 @@ if __name__ == "__main__":
             sys.exit(1)
 
         # Run Column F Non-Vacuity Positive Probe
-        verify_governance_non_vacuity(httpx.Client(base_url=args.base_url, timeout=30.0))
+        probe_headers = {"Authorization": f"Bearer {args.api_key}"} if args.api_key else {}
+        verify_governance_non_vacuity(httpx.Client(base_url=args.base_url, timeout=30.0, headers=probe_headers))
         print("✅ ABSOLUTE NON-VACUITY VERIFIED: Deliberately broken ranking failed decisively across every column, and Column F discrimination is fully grounded.")

@@ -1,3 +1,4 @@
+import re
 import sqlite3
 import time
 from datetime import datetime, timezone
@@ -147,15 +148,15 @@ class SQLiteStore:
             "have", "has", "had", "do", "does", "did", "my", "your", "his", "her", "its", "our", "their",
             "i", "me", "we", "us", "you", "he", "him", "she", "it", "they", "them", "with", "at", "by"
         }
+        raw_tokens = re.findall(r'[a-zA-Z0-9_\-\.]+', query)
         filtered = [
             t.replace('"', '""').replace("'", "''") 
-            for t in query.split() 
-            if (t.isalnum() or any(c in t for c in ["_", "-", "."])) and t.lower() not in ENGLISH_STOPWORDS
+            for t in raw_tokens 
+            if t.lower() not in ENGLISH_STOPWORDS and len(t) > 1
         ]
         clean_tokens = filtered if filtered else [
             t.replace('"', '""').replace("'", "''") 
-            for t in query.split() 
-            if t.isalnum() or any(c in t for c in ["_", "-", "."])
+            for t in raw_tokens
         ]
         if not clean_tokens:
             return []

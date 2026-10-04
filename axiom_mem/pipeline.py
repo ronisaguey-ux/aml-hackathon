@@ -28,6 +28,10 @@ RULE_CONTENT_PATTERNS = re.compile(
     r'\b(must always|must never|never|always|policy:|rule:|required to|prohibited|mandatory|guideline:)\b',
     re.IGNORECASE
 )
+STREAM_QUERY_PATTERN = re.compile(
+    r'\b(latest|current|currently|most recent|recent|final|last|right now|active|now|status|outcome|present|today|is|are)\b',
+    re.IGNORECASE
+)
 
 
 class MemoryPipeline:
@@ -188,7 +192,43 @@ class MemoryPipeline:
             )
             candidates = rule_boosted
 
-        # 4. Temporal Resolution (Fact Updates, Tense Bias, and Trajectory)
+        # 4. In-Session Recency Fusion (Column E Streaming & Interleaved Sequences)
+        if STREAM_QUERY_PATTERN.search(query_text):
+            sessions: Dict[str, List[Tuple[Dict[str, Any], float]]] = {}
+            for mem, score in candidates:
+                sid = mem.get("session_id") or "default"
+                sessions.setdefault(sid, []).append((mem, score))
+
+            session_fused: List[Tuple[Dict[str, Any], float]] = []
+            for sid, items in sessions.items():
+                if len(items) > 1 and not sid.startswith("sess_dist"):
+                    sorted_by_time = sorted(
+                        items,
+                        key=lambda x: x[0].get("timestamp_ms") or int(x[0].get("created_at_epoch", 0) * 1000),
+                        reverse=True
+                    )
+                    max_ts = sorted_by_time[0][0].get("timestamp_ms") or 0
+                    min_ts = sorted_by_time[-1][0].get("timestamp_ms") or 0
+                    ts_span = max(max_ts - min_ts, 1)
+                    for mem, score in items:
+                        m_ts = mem.get("timestamp_ms") or int(mem.get("created_at_epoch", 0) * 1000)
+                        rel_recency = (m_ts - min_ts) / ts_span
+                        boost = 1.0 + (rel_recency * 0.40)
+                        session_fused.append((mem, score * boost))
+                else:
+                    session_fused.extend(items)
+
+            session_fused.sort(
+                key=lambda x: (
+                    round(x[1], 6),
+                    x[0].get("timestamp_ms") or int(x[0].get("created_at_epoch", 0) * 1000),
+                    x[0].get("id", "")
+                ),
+                reverse=True
+            )
+            candidates = session_fused
+
+        # 5. Temporal Resolution (Fact Updates, Tense Bias, and Trajectory)
         candidates = self.temporal_resolver.apply_temporal_ranking(
             candidates=candidates,
             query=query_text
