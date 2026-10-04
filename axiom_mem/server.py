@@ -114,6 +114,28 @@ def add_memory(req: AddRequest):
         )
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Optional add-status endpoint. The AML access request accepts an optional
+# `add_status_endpoint` whose value must contain a `{task_id}` placeholder.
+# Adds here are synchronous: the memory is durably written before the add
+# response returns, so a request already in the `requests` table is by
+# definition finished. This reports exactly that and nothing more -- a liveness
+# convenience for a client that polls, not a second source of truth. The
+# task_id is the `request_id` supplied on the add.
+# ─────────────────────────────────────────────────────────────────────────────
+@app.get("/add/status/{task_id}")
+@app.get("/v1/add/status/{task_id}")
+@app.get("/v1/memories/add/status/{task_id}")
+def add_status(task_id: str):
+    if store is None:
+        return {"task_id": task_id, "status": "unavailable", "synchronous": True}
+    return {
+        "task_id": task_id,
+        "status": "completed" if store.is_request_seen(task_id) else "not_found",
+        "synchronous": True,
+    }
+
+
 @app.post("/search", response_model=SearchResponse, status_code=status.HTTP_200_OK)
 @app.post("/v1/memories/search", response_model=SearchResponse, status_code=status.HTTP_200_OK)
 @app.post("/v1/search", response_model=SearchResponse, status_code=status.HTTP_200_OK)

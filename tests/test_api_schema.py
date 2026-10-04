@@ -84,3 +84,30 @@ def test_multimodal_content_part_handling(client):
     hits = s_resp.json()["data"]
     assert len(hits) > 0
     assert "multimodal text part" in hits[0]["content"]
+
+
+def test_add_status_endpoint_reports_completed_and_not_found(client):
+    """The optional AML add-status endpoint must be honest for both a request the
+    server has seen (completed, because adds are synchronous) and one it has not."""
+    req_id = "eval:status_test:req_001"
+    add = client.post("/add", json={
+        "request_id": req_id,
+        "messages": [{"role": "user", "content": "status probe"}],
+        "user_id": "eval:status_test:user",
+        "session_id": "eval:status_test:session",
+    })
+    assert add.status_code == 200
+
+    known = client.get(f"/v1/memories/add/status/{req_id}")
+    assert known.status_code == 200
+    assert known.json()["status"] == "completed"
+    assert known.json()["task_id"] == req_id
+
+    unknown = client.get("/v1/memories/add/status/never-seen-request")
+    assert unknown.status_code == 200
+    assert unknown.json()["status"] == "not_found"
+
+    # An alias path must behave identically.
+    alias = client.get(f"/v1/add/status/{req_id}")
+    assert alias.status_code == 200
+    assert alias.json()["status"] == "completed"

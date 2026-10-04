@@ -11,6 +11,7 @@ This dossier details the architecture, configuration, deployment units, and veri
 - **Academic Board Compatibility**: Fully implemented and tested adapter for OpenAI `text-embedding-v4` (`EMBEDDING_PROVIDER=openai`, `TEXT_EMBEDDING_MODEL=text-embedding-v4`) is provided for academic researchers.
 - **Repository URL**: `https://github.com/ronisaguey-ux/aml-hackathon.git`
 - **Submitted Version Tag**: `v0.3.1`
+- **Optional Add-Status Endpoint**: `https://axiom.helpotron.dpdns.org/v1/memories/add/status/{task_id}` (task_id = the add's `request_id`). Adds are synchronous, so a request the server has seen reports `completed`; an unseen one reports `not_found`.
 - **Data Retention Hygiene**: Automated 30-day purge enabled (`AXIOM_DATA_RETENTION_DAYS=30`), compliant with Section 2.4 of AML evaluation rules.
 
 ---
