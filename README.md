@@ -39,8 +39,8 @@ From our controlled 60-turn evaluation on Gemma-4-12B comparing AxiomMem's bound
 |:---|:---:|:---:|:---:|
 | **Task Steps Completed** | **60 / 60** | 60 / 60 | Parity |
 | **Mid-Session Facts Recalled at End** | **60 / 60 (strictly ordered)** | 9 / 60 (unordered) | **6.7× improvement** |
-| **Prefix-Cache Reuse** | **81.3%** | 30.8% | **+50.5% cache hit rate** |
-| **Compute Cost** | **118,817 token units** | 484,957 token units | **4.08× cheaper** |
+| **Prefix-Cache Reuse** | **76.0%** | 30.8% | **+45.2% cache hit rate** |
+| **Compute Cost** | **106,678 token units** | 484,957 token units | **4.55× cheaper** |
 
 ---
 
