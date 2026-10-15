@@ -24,6 +24,13 @@ class FastEmbedAdapter(BaseEmbeddingAdapter):
     """
     def __init__(self, model_name: Optional[str] = None):
         self.model_name = model_name or config.FASTEMBED_MODEL
+        # Pin ONNX to one intra-op thread per embed call. Left at its default, a single
+        # embed spawns one worker per core, so the evaluation's concurrent adds each grab
+        # every core and they thrash instead of scaling - measured: throughput flat from 4
+        # to 32 concurrent adds while all cores sat at ~560%. One thread per call lets the
+        # concurrency come from the caller (server threads / workers) instead.
+        os.environ.setdefault("OMP_NUM_THREADS", "1")
+        os.environ.setdefault("ORT_NUM_THREADS", "1")
         from fastembed import TextEmbedding
         self._model = TextEmbedding(model_name=self.model_name)
 
